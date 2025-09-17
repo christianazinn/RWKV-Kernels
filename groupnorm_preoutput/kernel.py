@@ -31,14 +31,13 @@ def groupnorm_fusion_kernel(
     group_base = group_id * N
 
     n_offs = tl.arange(0, N_size)
-    mask = n_offs < N
-
+    
     xx_offs = base_offset + n_offs
-    xx = tl.load(xx_ptr + xx_offs, mask=mask, other=0.0)
+    xx = tl.load(xx_ptr + xx_offs)
 
     nn_offs = group_base + n_offs
-    ln_w = tl.load(ln_w_ptr + nn_offs, mask=mask, other=1.0)
-    ln_b = tl.load(ln_b_ptr + nn_offs, mask=mask, other=0.0)
+    ln_w = tl.load(ln_w_ptr + nn_offs)
+    ln_b = tl.load(ln_b_ptr + nn_offs)
 
     # group norm
     xx_float = xx.to(tl.float32)
@@ -55,10 +54,10 @@ def groupnorm_fusion_kernel(
     xx_norm = xx_centered * inv_std
     xx_norm = xx_norm * ln_w.to(tl.float32) + ln_b.to(tl.float32)
 
-    r = tl.load(r_ptr + xx_offs, mask=mask, other=0.0)
-    k = tl.load(k_ptr + xx_offs, mask=mask, other=0.0)
-    v = tl.load(v_ptr + xx_offs, mask=mask, other=0.0)
-    r_k = tl.load(r_k_ptr + nn_offs, mask=mask, other=0.0)
+    r = tl.load(r_ptr + xx_offs)
+    k = tl.load(k_ptr + xx_offs)
+    v = tl.load(v_ptr + xx_offs)
+    r_k = tl.load(r_k_ptr + nn_offs)
 
     # (r * k * r_k).sum(-1, keepdim=True) * v
     rkv_prod = r.to(tl.float32) * k.to(tl.float32) * r_k.to(tl.float32)
@@ -67,10 +66,10 @@ def groupnorm_fusion_kernel(
 
     xx_final = xx_norm + rkv_contribution
 
-    g = tl.load(g_ptr + xx_offs, mask=mask, other=1.0)
+    g = tl.load(g_ptr + xx_offs)
     output = xx_final * g.to(tl.float32)
 
-    tl.store(output_ptr + xx_offs, output.to(xx.dtype), mask=mask)
+    tl.store(output_ptr + xx_offs, output.to(xx.dtype))
 
 
 def groupnorm_fusion(
