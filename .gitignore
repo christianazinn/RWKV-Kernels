@@ -6,6 +6,8 @@ __pycache__/
 # C extensions
 *.so
 
+**/ncu/
+
 # Distribution / packaging
 .Python
 build/

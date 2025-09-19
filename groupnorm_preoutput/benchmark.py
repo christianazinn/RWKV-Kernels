@@ -1,6 +1,6 @@
 import time
 import torch
-from kernel import groupnorm_fusion
+from kernel import groupnorm_generation, groupnorm_prefill
 
 
 @torch.jit.script
@@ -55,7 +55,7 @@ def make_inputs(H, N, T, dtype, device):
     return xx, ln_w, ln_b, r, k, r_k, v, g, H, N
 
 
-def benchmark(H=8, N=64, T=1024, dtype=torch.float32, device="cuda", warmup=10, iters=100):
+def benchmark(H=8, N=64, T=1024, groupnorm_fusion=groupnorm_prefill, dtype=torch.float32, device="cuda", warmup=10, iters=100):
     inputs = make_inputs(H, N, T, dtype, device)
 
     # ============ warmup ============
@@ -82,7 +82,7 @@ def benchmark(H=8, N=64, T=1024, dtype=torch.float32, device="cuda", warmup=10, 
     print(f"PyTorch  : {t_torch:.3f} ms/iter")
     print(f"Triton   : {t_triton:.3f} ms/iter  {t_torch / t_triton:.2f}x")
 
-def validate_accuracy(H=8, N=64, T=1024, dtype=torch.float32, device="cuda"):
+def validate_accuracy(H=8, N=64, T=1024, groupnorm_fusion=groupnorm_prefill, dtype=torch.float32, device="cuda"):
     inputs = make_inputs(H, N, T, dtype, device)
 
     output_triton = groupnorm_fusion(*inputs)
@@ -108,7 +108,7 @@ if __name__ == "__main__":
         print("--- Generation (T=1) - New 3D format [H, N, T]:")
         for H in [8, 16, 32, 40]:
             print(f"--- H={H}, N=64 (3D):")
-            benchmark(H=H, N=64, T=1, dtype=DTYPE)
+            benchmark(H=H, N=64, T=1, groupnorm_fusion=groupnorm_generation, dtype=DTYPE)
             print()
 
         print("--- Prefill (various T):")
@@ -119,7 +119,7 @@ if __name__ == "__main__":
 
         print(f"\n=========== GROUPNORM OUTPUT FUSION CORRECTNESS CHECK =========")
         print("Testing generation (T=1) - New 3D:")
-        validate_accuracy(H=8, N=64, T=1, dtype=DTYPE)
+        validate_accuracy(H=8, N=64, T=1, groupnorm_fusion=groupnorm_generation, dtype=DTYPE)
 
         print("Testing prefill (T=1024):")
         validate_accuracy(H=8, N=64, T=1024, dtype=DTYPE)

@@ -2,7 +2,6 @@ import torch
 import triton
 import triton.language as tl
 
-
 @triton.jit
 def groupnorm_fusion_kernel(
     xx_ptr,
@@ -72,7 +71,7 @@ def groupnorm_fusion_kernel(
     tl.store(output_ptr + xx_offs, output.to(xx.dtype))
 
 
-def groupnorm_fusion(
+def groupnorm_prefill(
     xx: torch.Tensor,
     ln_w: torch.Tensor,
     ln_b: torch.Tensor,
@@ -86,19 +85,9 @@ def groupnorm_fusion(
     eps: float = 64e-5
 ):
     """replaces everything after RWKV7_OP except matmul @ O_"""
-
+    
+    T = xx.shape[0]
     C = H * N
-    if xx.dim() == 3:
-        # generation: xx is [H, N, 1]
-        assert xx.shape == (H, N, 1), f"Expected [H, N, 1] for generation, got {xx.shape}"
-        T = 1
-        xx = xx.view(T, C) 
-        squeeze_output = True
-    else:
-        # prefill: xx is [T, C]
-        T = xx.shape[0]
-        squeeze_output = False
-
     assert xx.shape == (T, C)
     assert ln_w.shape == (C,)
     assert ln_b.shape == (C,)
@@ -116,7 +105,48 @@ def groupnorm_fusion(
         T, H, N, eps, N_size
     )
 
-    if squeeze_output:
-        output = output.squeeze(0)
+    return output
+
+def groupnorm_generation(
+    xx: torch.Tensor,
+    ln_w: torch.Tensor,
+    ln_b: torch.Tensor,
+    r: torch.Tensor,
+    k: torch.Tensor,
+    r_k: torch.Tensor,
+    v: torch.Tensor,
+    g: torch.Tensor,
+    H: int,
+    N: int,
+    eps: float = 64e-5
+):
+    """replaces everything after RWKV7_OP except matmul @ O_"""
+    
+    T = 1
+    C = H * N
+    assert xx.shape == (H, N, 1)
+    assert ln_w.shape == (C,)
+    assert ln_b.shape == (C,)
+    assert r_k.shape == (C,)
+
+    xx = xx.view(T, C)
+    r = r.view(T, C)
+    k = k.view(T, C)
+    v = v.view(T, C)
+    g = g.view(T, C)
+
+    output = torch.empty_like(xx)
+
+    N_size = triton.next_power_of_2(N)
+    num_blocks = T * H
+
+    grid = (num_blocks,)
+
+    groupnorm_fusion_kernel[grid](
+        xx, ln_w, ln_b, r, k, r_k, v, g, output,
+        T, H, N, eps, N_size
+    )
+
+    output = output.view(H, N, 1)
 
     return output
