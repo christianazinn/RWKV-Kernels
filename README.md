@@ -1,2 +1,2 @@
 # RWKV-Kernels
-Triton kernels for RWKV
+Triton and CUDA kernels for RWKV
